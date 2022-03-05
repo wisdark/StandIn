@@ -110,6 +110,52 @@ namespace StandIn
             SAM_ACCOUNT_TYPE_MAX = 0x7fffffff
         }
 
+        [Flags]
+        public enum msPKICertificateNameFlag : UInt32
+        {
+            ENROLLEE_SUPPLIES_SUBJECT = 0x00000001,
+            ADD_EMAIL = 0x00000002,
+            ADD_OBJ_GUID = 0x00000004,
+            OLD_CERT_SUPPLIES_SUBJECT_AND_ALT_NAME = 0x00000008,
+            ADD_DIRECTORY_PATH = 0x00000100,
+            ENROLLEE_SUPPLIES_SUBJECT_ALT_NAME = 0x00010000,
+            SUBJECT_ALT_REQUIRE_DOMAIN_DNS = 0x00400000,
+            SUBJECT_ALT_REQUIRE_SPN = 0x00800000,
+            SUBJECT_ALT_REQUIRE_DIRECTORY_GUID = 0x01000000,
+            SUBJECT_ALT_REQUIRE_UPN = 0x02000000,
+            SUBJECT_ALT_REQUIRE_EMAIL = 0x04000000,
+            SUBJECT_ALT_REQUIRE_DNS = 0x08000000,
+            SUBJECT_REQUIRE_DNS_AS_CN = 0x10000000,
+            SUBJECT_REQUIRE_EMAIL = 0x20000000,
+            SUBJECT_REQUIRE_COMMON_NAME = 0x40000000,
+            SUBJECT_REQUIRE_DIRECTORY_PATH = 0x80000000,
+        }
+
+        [Flags]
+        public enum msPKIEnrollmentFlag : UInt32
+        {
+            NONE = 0x00000000,
+            INCLUDE_SYMMETRIC_ALGORITHMS = 0x00000001,
+            PEND_ALL_REQUESTS = 0x00000002,
+            PUBLISH_TO_KRA_CONTAINER = 0x00000004,
+            PUBLISH_TO_DS = 0x00000008,
+            AUTO_ENROLLMENT_CHECK_USER_DS_CERTIFICATE = 0x00000010,
+            AUTO_ENROLLMENT = 0x00000020,
+            CT_FLAG_DOMAIN_AUTHENTICATION_NOT_REQUIRED = 0x80,
+            PREVIOUS_APPROVAL_VALIDATE_REENROLLMENT = 0x00000040,
+            USER_INTERACTION_REQUIRED = 0x00000100,
+            ADD_TEMPLATE_NAME = 0x200,
+            REMOVE_INVALID_CERTIFICATE_FROM_PERSONAL_STORE = 0x00000400,
+            ALLOW_ENROLL_ON_BEHALF_OF = 0x00000800,
+            ADD_OCSP_NOCHECK = 0x00001000,
+            ENABLE_KEY_REUSE_ON_NT_TOKEN_KEYSET_STORAGE_FULL = 0x00002000,
+            NOREVOCATIONINFOINISSUEDCERTS = 0x00004000,
+            INCLUDE_BASIC_CONSTRAINTS_FOR_EE_CERTS = 0x00008000,
+            ALLOW_PREVIOUS_APPROVAL_KEYBASEDRENEWAL_VALIDATE_REENROLLMENT = 0x00010000,
+            ISSUANCE_POLICIES_FROM_REQUEST = 0x00020000,
+            SKIP_AUTO_RENEWAL = 0x00040000
+        }
+
         public static List<String> userTokenRights = new List<String> {
             "SeTrustedCredManAccessPrivilege",
             "SeNetworkLogonRight",
@@ -161,7 +207,7 @@ namespace StandIn
 		{
 			Console.WriteLine(@"  __               ");
 			Console.WriteLine(@" ( _/_   _//   ~b33f");
-			Console.WriteLine(@"__)/(//)(/(/)  v1.2");
+			Console.WriteLine(@"__)/(//)(/(/)  v1.4");
             Console.WriteLine(@"");
             string HelpText = "\n >--~~--> Args? <--~~--<\n\n" +
 							  "--help          This help menu\n" +
@@ -203,8 +249,16 @@ namespace StandIn
                               "--delegation    Boolean, list accounts with unconstrained / constrained delegation\n" +
                               "--asrep         Boolean, list ASREP roastable accounts\n" +
                               "--dc            Boolean, list all domain controllers\n" +
-                              "--add           Boolean, context dependent group/spn\n" +
-                              "--remove        Boolean, context dependent msDS-AllowedToActOnBehalfOfOtherIdentity/group\n" +
+                              "--trust         Boolean, list all trust relationships\n" +
+                              "--adcs          List all CA's and all published templates\n" +
+                              "--clientauth    Boolean, modify ADCS template to add/remove \"Client Authentication\"\n" +
+                              "--ess           Boolean, modify ADCS template to add/remove \"ENROLLEE_SUPPLIES_SUBJECT\"\n" +
+                              "--pend          Boolean, modify ADCS template to add/remove \"PEND_ALL_REQUESTS\"\n" +
+                              "--owner         Boolean, modify ADCS template owner\n" +
+                              "--write         Boolean, modify ADCS template, add/remove WriteDacl/WriteOwner/WriteProperty permission for NtAccount\n" +
+                              "--enroll        Boolean, modify ADCS template, add/remove \"Certificate-Enrollment\" permission for NtAccount\n" +
+                              "--add           Boolean, context dependent group/spn/adcs\n" +
+                              "--remove        Boolean, context dependent msDS-AllowedToActOnBehalfOfOtherIdentity/group/adcs\n" +
 							  "--make          Boolean, make machine; ms-DS-MachineAccountQuota applies\n" +
 							  "--disable       Boolean, disable machine; should be the same user that created the machine\n" +
                               "--access        Boolean, list access permissions for object\n" +
@@ -302,6 +356,9 @@ namespace StandIn
                               "# Get a list of all domain controllers\n" +
                               "StandIn.exe --dc\n\n" +
 
+                              "# Get a list of all trust relationships in the current domain\n" +
+                              "StandIn.exe --trust\n\n" +
+
                               "# List members of group or list user group membership\n" +
                               "StandIn.exe --group Literarum\n" +
                               "StandIn.exe --group \"Magna Ultima\" --domain redhook --user RFludd --pass Cl4vi$Alchemi4e\n" +
@@ -314,6 +371,35 @@ namespace StandIn
                               "# Remove user from group\n" +
                               "StandIn.exe --group \"Dunwich Council\" --ntaccount \"REDHOOK\\WWhateley\" --remove\n" +
                               "StandIn.exe --group DAgon --ntaccount \"REDHOOK\\RCarter\" --remove --domain redhook --user RFludd --pass Cl4vi$Alchemi4e\n\n" +
+
+                              "# List CA's and all published templates, optionally wildcard filter on template name\n" +
+                              "StandIn.exe --adcs\n" +
+                              "StandIn.exe --adcs --filter Kingsport\n" +
+                              "StandIn.exe --adcs --domain redhook --user RFludd --pass Cl4vi$Alchemi4e\n\n" +
+
+                              "# Add/remove \"Client Authentication\" from template pKIExtendedKeyUsage, filter should contain the exact name of the template\n" +
+                              "StandIn.exe --adcs --filter Kingsport --clientauth --add\n" +
+                              "StandIn.exe --adcs --filter Kingsport --clientauth --remove --domain redhook --user RFludd --pass Cl4vi$Alchemi4e\n\n" +
+
+                              "# Add/remove \"ENROLLEE_SUPPLIES_SUBJECT\" from template msPKI-Certificate-Name-Flag, filter should contain the exact name of the template\n" +
+                              "StandIn.exe --adcs --filter Kingsport --ess --add\n" +
+                              "StandIn.exe --adcs --filter Kingsport --ess --remove --domain redhook --user RFludd --pass Cl4vi$Alchemi4e\n\n" +
+
+                              "# Add/remove \"PEND_ALL_REQUESTS\" from template msPKI-Enrollment-Flag, filter should contain the exact name of the template\n" +
+                              "StandIn.exe --adcs --filter Kingsport --pend --add\n" +
+                              "StandIn.exe --adcs --filter Kingsport --pend --remove --domain redhook --user RFludd --pass Cl4vi$Alchemi4e\n\n" +
+
+                              "# Change template owner, filter should contain the exact name of the template\n" +
+                              "StandIn.exe --adcs --filter Kingsport --ntaccount \"REDHOOK\\MBWillett\" --owner\n" +
+                              "StandIn.exe --adcs --filter Kingsport --ntaccount \"REDHOOK\\MBWillett\" --owner --domain redhook --user RFludd --pass Cl4vi$Alchemi4e\n\n" +
+
+                              "# Grant NtAccount WriteDacl/WriteOwner/WriteProperty, filter should contain the exact name of the template\n" +
+                              "StandIn.exe --adcs --filter Kingsport --ntaccount \"REDHOOK\\MBWillett\" --write --add\n" +
+                              "StandIn.exe --adcs --filter Kingsport --ntaccount \"REDHOOK\\MBWillett\" --write --remove  --domain redhook --user RFludd --pass Cl4vi$Alchemi4e\n\n" +
+
+                              "# Grant NtAccount \"Certificate-Enrollment\", filter should contain the exact name of the template\n" +
+                              "StandIn.exe --adcs --filter Kingsport --ntaccount \"REDHOOK\\MBWillett\" --enroll --add\n" +
+                              "StandIn.exe --adcs --filter Kingsport --ntaccount \"REDHOOK\\MBWillett\" --enroll --remove --domain redhook --user RFludd --pass Cl4vi$Alchemi4e\n\n" +
 
                               "# Create machine object\n" +
                               "StandIn.exe --computer Innsmouth --make\n" +
@@ -552,117 +638,209 @@ namespace StandIn
 
         public static void ReadDNSObject(Byte[] arrObj)
         {
-            IntPtr pObject = Marshal.AllocHGlobal(arrObj.Length);
-            Marshal.Copy(arrObj, 0, pObject, arrObj.Length);
-
-            DnssrvRpcRecord oRecord = (DnssrvRpcRecord)Marshal.PtrToStructure(pObject, typeof(DnssrvRpcRecord));
-            IntPtr pData = (IntPtr)(pObject.ToInt64() + 24);
-
-            if (oRecord.wType == 1)
+            try
             {
-                byte[] bytes = BitConverter.GetBytes(Marshal.ReadInt32(pData));
-                Console.WriteLine("    |_ DNS_RPC_RECORD_A : " + new IPAddress(bytes).ToString());
-            }
-            else if (oRecord.wType == 2 || oRecord.wType == 5 || oRecord.wType == 12)
-            {
-                Int16 iLen = Marshal.ReadByte(pData);
-                Int16 iSeg = Marshal.ReadByte((IntPtr)(pData.ToInt64() + 1));
-                IntPtr pDataPtr = (IntPtr)(pData.ToInt64() + 2);
-                String sRecord = String.Empty;
-                for (int i=0; i < iSeg; i++)
+                IntPtr pObject = Marshal.AllocHGlobal(arrObj.Length);
+                Marshal.Copy(arrObj, 0, pObject, arrObj.Length);
+
+                DnssrvRpcRecord oRecord = (DnssrvRpcRecord)Marshal.PtrToStructure(pObject, typeof(DnssrvRpcRecord));
+                IntPtr pData = (IntPtr)(pObject.ToInt64() + 24);
+
+                if (oRecord.wType == 0)
                 {
-                    Int16 iSegLen = Marshal.ReadByte(pDataPtr);
-                    sRecord += Marshal.PtrToStringAnsi((IntPtr)(pDataPtr.ToInt64() + 1), iSegLen);
-                    if (i != (iSeg-1))
-                    {
-                        sRecord += ".";
-                    }
-                    pDataPtr = (IntPtr)(pDataPtr.ToInt64() + iSegLen + 1);
+                    Int64 iMSTS = (Marshal.ReadInt64(pData)/10)/1000;
+                    Console.WriteLine("    |_ DNS_RPC_RECORD_TS : " + (new DateTime(1601, 1, 1)).AddMilliseconds(iMSTS));
                 }
-                Console.WriteLine("    |_ DNS_RPC_RECORD_NODE_NAME : " + sRecord);
-            }
-            else if (oRecord.wType == 33)
-            {
-                Int16 iPrio = getInt16ToBigEndian(Marshal.ReadInt16(pData));
-                Int16 iWeight = getInt16ToBigEndian(Marshal.ReadInt16((IntPtr)(pData.ToInt64() + 2)));
-                Int16 iPort = getInt16ToBigEndian(Marshal.ReadInt16((IntPtr)(pData.ToInt64() + 4)));
-                Int16 iSeg = Marshal.ReadByte((IntPtr)(pData.ToInt64() + 7));
-                IntPtr pDataPtr = (IntPtr)(pData.ToInt64() + 8);
-                String sRecord = String.Empty;
-                for (int i = 0; i < iSeg; i++)
+                else if (oRecord.wType == 1)
                 {
-                    Int16 iSegLen = Marshal.ReadByte(pDataPtr);
-                    sRecord += Marshal.PtrToStringAnsi((IntPtr)(pDataPtr.ToInt64() + 1), iSegLen);
-                    if (i != (iSeg - 1))
-                    {
-                        sRecord += ".";
-                    }
-                    pDataPtr = (IntPtr)(pDataPtr.ToInt64() + iSegLen + 1);
+                    byte[] bytes = BitConverter.GetBytes(Marshal.ReadInt32(pData));
+                    Console.WriteLine("    |_ DNS_RPC_RECORD_A : " + new IPAddress(bytes).ToString());
                 }
-                Console.WriteLine("    |_ DNS_RPC_RECORD_SRV");
-                Console.WriteLine("       |_ Priority : " + iPrio);
-                Console.WriteLine("       |_ Weight   : " + iWeight);
-                Console.WriteLine("       |_ Port     : " + iPort);
-                Console.WriteLine("       |_ Name     : " + sRecord);
-            }
-            else if (oRecord.wType == 6)
-            {
-                Int32 iSerial = getInt32ToBigEndian(Marshal.ReadInt32(pData));
-                Int32 iRefresh = getInt32ToBigEndian(Marshal.ReadInt32((IntPtr)(pData.ToInt64() + 4)));
-                Int32 iRetry = getInt32ToBigEndian(Marshal.ReadInt32((IntPtr)(pData.ToInt64() + 8)));
-                Int32 iExpire = getInt32ToBigEndian(Marshal.ReadInt32((IntPtr)(pData.ToInt64() + 12)));
-                Int32 iMinimumTtl = getInt32ToBigEndian(Marshal.ReadInt32((IntPtr)(pData.ToInt64() + 16)));
-
-                Int16 iLen = Marshal.ReadByte((IntPtr)(pData.ToInt64() + 20));
-                Int16 iSeg = Marshal.ReadByte((IntPtr)(pData.ToInt64() + 21));
-                IntPtr pDataPtr = (IntPtr)(pData.ToInt64() + 22);
-                String sNamePrimaryServer = String.Empty;
-                for (int i = 0; i < iSeg; i++)
+                else if (oRecord.wType == 2 || oRecord.wType == 5 || oRecord.wType == 12)
                 {
-                    Int16 iSegLen = Marshal.ReadByte(pDataPtr);
-                    sNamePrimaryServer += Marshal.PtrToStringAnsi((IntPtr)(pDataPtr.ToInt64() + 1), iSegLen);
-                    if (i != (iSeg - 1))
+                    Int16 iLen = Marshal.ReadByte(pData);
+                    Int16 iSeg = Marshal.ReadByte((IntPtr)(pData.ToInt64() + 1));
+                    IntPtr pDataPtr = (IntPtr)(pData.ToInt64() + 2);
+                    String sRecord = String.Empty;
+                    for (int i = 0; i < iSeg; i++)
                     {
-                        sNamePrimaryServer += ".";
+                        Int16 iSegLen = Marshal.ReadByte(pDataPtr);
+                        sRecord += Marshal.PtrToStringAnsi((IntPtr)(pDataPtr.ToInt64() + 1), iSegLen);
+                        if (i != (iSeg - 1))
+                        {
+                            sRecord += ".";
+                        }
+                        pDataPtr = (IntPtr)(pDataPtr.ToInt64() + iSegLen + 1);
                     }
-                    pDataPtr = (IntPtr)(pDataPtr.ToInt64() + iSegLen + 1);
+                    Console.WriteLine("    |_ DNS_RPC_RECORD_NODE_NAME : " + sRecord);
                 }
-
-                iSeg = Marshal.ReadByte((IntPtr)(pData.ToInt64() + 21 + iLen));
-                pDataPtr = (IntPtr)(pData.ToInt64() + 22 + iLen);
-                String sZoneAdminEmail = String.Empty;
-                for (int i = 0; i < iSeg; i++)
+                else if (oRecord.wType == 33)
                 {
-                    Int16 iSegLen = Marshal.ReadByte(pDataPtr);
-                    sZoneAdminEmail += Marshal.PtrToStringAnsi((IntPtr)(pDataPtr.ToInt64() + 1), iSegLen);
-                    if (i != (iSeg - 1))
+                    Int16 iPrio = getInt16ToBigEndian(Marshal.ReadInt16(pData));
+                    Int16 iWeight = getInt16ToBigEndian(Marshal.ReadInt16((IntPtr)(pData.ToInt64() + 2)));
+                    Int16 iPort = getInt16ToBigEndian(Marshal.ReadInt16((IntPtr)(pData.ToInt64() + 4)));
+                    Int16 iSeg = Marshal.ReadByte((IntPtr)(pData.ToInt64() + 7));
+                    IntPtr pDataPtr = (IntPtr)(pData.ToInt64() + 8);
+                    String sRecord = String.Empty;
+                    for (int i = 0; i < iSeg; i++)
                     {
-                        sZoneAdminEmail += ".";
+                        Int16 iSegLen = Marshal.ReadByte(pDataPtr);
+                        sRecord += Marshal.PtrToStringAnsi((IntPtr)(pDataPtr.ToInt64() + 1), iSegLen);
+                        if (i != (iSeg - 1))
+                        {
+                            sRecord += ".";
+                        }
+                        pDataPtr = (IntPtr)(pDataPtr.ToInt64() + iSegLen + 1);
                     }
-                    pDataPtr = (IntPtr)(pDataPtr.ToInt64() + iSegLen + 1);
+                    Console.WriteLine("    |_ DNS_RPC_RECORD_SRV");
+                    Console.WriteLine("       |_ Priority : " + iPrio);
+                    Console.WriteLine("       |_ Weight   : " + iWeight);
+                    Console.WriteLine("       |_ Port     : " + iPort);
+                    Console.WriteLine("       |_ Name     : " + sRecord);
+                }
+                else if (oRecord.wType == 6)
+                {
+                    Int32 iSerial = getInt32ToBigEndian(Marshal.ReadInt32(pData));
+                    Int32 iRefresh = getInt32ToBigEndian(Marshal.ReadInt32((IntPtr)(pData.ToInt64() + 4)));
+                    Int32 iRetry = getInt32ToBigEndian(Marshal.ReadInt32((IntPtr)(pData.ToInt64() + 8)));
+                    Int32 iExpire = getInt32ToBigEndian(Marshal.ReadInt32((IntPtr)(pData.ToInt64() + 12)));
+                    Int32 iMinimumTtl = getInt32ToBigEndian(Marshal.ReadInt32((IntPtr)(pData.ToInt64() + 16)));
+
+                    Int16 iLen = Marshal.ReadByte((IntPtr)(pData.ToInt64() + 20));
+                    Int16 iSeg = Marshal.ReadByte((IntPtr)(pData.ToInt64() + 21));
+                    IntPtr pDataPtr = (IntPtr)(pData.ToInt64() + 22);
+                    String sNamePrimaryServer = String.Empty;
+                    for (int i = 0; i < iSeg; i++)
+                    {
+                        Int16 iSegLen = Marshal.ReadByte(pDataPtr);
+                        sNamePrimaryServer += Marshal.PtrToStringAnsi((IntPtr)(pDataPtr.ToInt64() + 1), iSegLen);
+                        if (i != (iSeg - 1))
+                        {
+                            sNamePrimaryServer += ".";
+                        }
+                        pDataPtr = (IntPtr)(pDataPtr.ToInt64() + iSegLen + 1);
+                    }
+
+                    iSeg = Marshal.ReadByte((IntPtr)(pData.ToInt64() + 21 + iLen));
+                    pDataPtr = (IntPtr)(pData.ToInt64() + 22 + iLen);
+                    String sZoneAdminEmail = String.Empty;
+                    for (int i = 0; i < iSeg; i++)
+                    {
+                        Int16 iSegLen = Marshal.ReadByte(pDataPtr);
+                        sZoneAdminEmail += Marshal.PtrToStringAnsi((IntPtr)(pDataPtr.ToInt64() + 1), iSegLen);
+                        if (i != (iSeg - 1))
+                        {
+                            sZoneAdminEmail += ".";
+                        }
+                        pDataPtr = (IntPtr)(pDataPtr.ToInt64() + iSegLen + 1);
+                    }
+
+                    Console.WriteLine("    |_ DNS_RPC_RECORD_SOA");
+                    Console.WriteLine("       |_ SerialNo      : " + iSerial);
+                    Console.WriteLine("       |_ Refresh       : " + iRefresh);
+                    Console.WriteLine("       |_ Retry         : " + iRetry);
+                    Console.WriteLine("       |_ Expire        : " + iExpire);
+                    Console.WriteLine("       |_ MinimumTtl    : " + iMinimumTtl);
+                    Console.WriteLine("       |_ PrimaryServer : " + sNamePrimaryServer);
+                    Console.WriteLine("       |_ AdminEmail    : " + sZoneAdminEmail);
+                }
+                else if (oRecord.wType == 28)
+                {
+                    Byte[] bIPV6 = new byte[16];
+                    Marshal.Copy(pData, bIPV6, 0, 16);
+                    Console.WriteLine("    |_ DNS_RPC_RECORD_AAAA : " + new IPAddress(bIPV6).ToString());
+                }
+                else
+                {
+                    Console.WriteLine("    |_ Unimplemented DNS Record Type ---> " + oRecord.wType);
+                    Console.WriteLine("       |_ DEBUG : " + BitConverter.ToString(arrObj).Replace("-", " "));
                 }
 
-                Console.WriteLine("    |_ DNS_RPC_RECORD_SOA");
-                Console.WriteLine("       |_ SerialNo      : " + iSerial);
-                Console.WriteLine("       |_ Refresh       : " + iRefresh);
-                Console.WriteLine("       |_ Retry         : " + iRetry);
-                Console.WriteLine("       |_ Expire        : " + iExpire);
-                Console.WriteLine("       |_ MinimumTtl    : " + iMinimumTtl);
-                Console.WriteLine("       |_ PrimaryServer : " + sNamePrimaryServer);
-                Console.WriteLine("       |_ AdminEmail    : " + sZoneAdminEmail);
-            }
-            else if (oRecord.wType == 28)
+                Marshal.FreeHGlobal(pObject);
+            } catch (Exception ex)
             {
-                Byte[] bytes = (new ArraySegment<Byte>(arrObj, 24, 16)).Array;
-                Console.WriteLine("    |_ DNS_RPC_RECORD_AAAA : " + new IPAddress(bytes).ToString());
+                Console.WriteLine("    |_ Failed to parse DNS entry..");
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine("       |_ " + ex.InnerException.Message);
+                }
+                else
+                {
+                    Console.WriteLine("       |_ " + ex.Message);
+                }
             }
-            else
-            {
-                Console.WriteLine("    |_ Unimplemented DNS Record Type ---> " + oRecord.wType);
-                Console.WriteLine("       |_ DEBUG : " + BitConverter.ToString(arrObj).Replace("-", " "));
-            }
+        }
 
-            Marshal.FreeHGlobal(pObject);
+        public static string ConvertPKIPeriod(byte[] bytes)
+        {
+            try
+            {
+                Array.Reverse(bytes);
+                var temp = BitConverter.ToString(bytes).Replace("-", "");
+                var value = Convert.ToInt64(temp, 16) * -.0000001;
+
+                if ((value % 31536000 == 0) && (value / 31536000) >= 1)
+                {
+                    if ((value / 31536000) == 1)
+                    {
+                        return "1 year";
+                    }
+
+                    return $"{value / 31536000} years";
+                }
+                else if ((value % 2592000 == 0) && (value / 2592000) >= 1)
+                {
+                    if ((value / 2592000) == 1)
+                    {
+                        return "1 month";
+                    }
+                    else
+                    {
+                        return $"{value / 2592000} months";
+                    }
+                }
+                else if ((value % 604800 == 0) && (value / 604800) >= 1)
+                {
+                    if ((value / 604800) == 1)
+                    {
+                        return "1 week";
+                    }
+                    else
+                    {
+                        return $"{value / 604800} weeks";
+                    }
+                }
+                else if ((value % 86400 == 0) && (value / 86400) >= 1)
+                {
+                    if ((value / 86400) == 1)
+                    {
+                        return "1 day";
+                    }
+                    else
+                    {
+                        return $"{value / 86400} days";
+                    }
+                }
+                else if ((value % 3600 == 0) && (value / 3600) >= 1)
+                {
+                    if ((value / 3600) == 1)
+                    {
+                        return "1 hour";
+                    }
+                    else
+                    {
+                        return $"{value / 3600} hours";
+                    }
+                }
+                else
+                {
+                    return "";
+                }
+            }
+            catch (Exception)
+            {
+                return "ERROR";
+            }
         }
     }
 }
